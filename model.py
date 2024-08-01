@@ -19,42 +19,9 @@ class Model_new(nn.Module):
 								kernel_size=3,
 								padding="same",
 								n_layers=3)
-		# self.encoder2 = EncoderConv(in_channels=params.embedding_dim,
-		# 						out_channels=params.embedding_dim,
-		# 						kernel_size=20,
-		# 						padding="same",
-		# 						n_layers=1)
-		# self.encoder = EncoderTransformer(d_model=params.embedding_dim,
-		# 						n_head=4,
-		# 						ffn_hidden=512,
-		# 						drop_prob=0.1,
-		# 						n_layers=6,
-		# 						)
 
 		self.biGRU = nn.LSTM(params.embedding_dim, params.hidden_size1, 2, bidirectional=True, batch_first=True)
 		self.GRU = nn.LSTM(params.hidden_size1*2, params.hidden_size2, 1, batch_first=True)
-
-		# self.attention1 = XMU_MultiHeadAttention(params.hidden_size2, 8, 0.2)
-		# self.layer_norm1 = LayerNorm(params.hidden_size2)
-		# self.dropout = nn.Dropout(0.2)
-		# self.GRUAtt = GRUAtt(params.hidden_size2, n_layers=3)
-
-		# self.case_fc = nn.Sequential(
-		# 					nn.Dropout(params.dropout),
-		# 					nn.Linear(params.hidden_size2*2, 1536),
-		# 					nn.Dropout(params.dropout),
-		# 					nn.ReLU(),
-		# 					)
-		# self.punct_fc = nn.Sequential(
-		# 					nn.Dropout(params.dropout),
-		# 					nn.Linear(params.hidden_size2*2, 1536),
-		# 					nn.Dropout(params.dropout),
-		# 					nn.ReLU(),
-		# 					)
-		# self.decoder_case = nn.Linear(1536, params.out_size_case)
-		# self.decoder_punct = nn.Linear(1536, params.out_size_punct)
-
-
 
 		############ Linear Attention
 		# self.attention_case = nn.Linear(params.hidden_size2, params.hidden_size2)
@@ -147,22 +114,10 @@ class Model_new(nn.Module):
 		label_lens, indx = label_lens.sort(dim=0, descending=True)
 		valid_output = valid_output[indx]
 
-		# valid_output = valid_output.permute(1, 0, 2)
-
 		embedding_out = pack_padded_sequence(valid_output, lengths=label_lens.cpu(), batch_first=True) # unpad
 		biGRU_out, _ = self.biGRU(embedding_out) # [batch_size, max_seq_length, 2*hidden_size1]
 		biGRU_out, label_lens = pad_packed_sequence(biGRU_out, batch_first=True) # pad sequence to max length in batch
 		GRU_out, _ = self.GRU(biGRU_out) # [batch_size, max_label_lens_in_this_batch, hidden_size2]
-
-		# GRU_out = GRU_out.permute(1, 0, 2)
-
-		############# GRU + attention
-		# x1 = self.dropout(GRU_out)
-		# y1 = self.attention1(x1)
-		# y1 = self.dropout(y1)
-		# y1 = self.layer_norm1(x1 + y1)
-		# GRU_out = self.GRUAtt(y1)
-
 
 		# for case prediction, concat with previous token
 		# Pad the tensor at the beginning of the T dimension to duplicate the first vector
@@ -175,12 +130,6 @@ class Model_new(nn.Module):
 		padded_tensor_punct = torch.nn.functional.pad(GRU_out, (0, 0, 0, 1), mode='replicate')
 		# Concatenate the original tensor with the padded tensor, which includes the duplicated last vector
 		concat_adjacent_punct = torch.cat((GRU_out, padded_tensor_punct[:, 1:, :]), dim=-1)
-
-
-		# ################# concat with previous and next token
-		# prev_elements = torch.cat((GRU_out[:, :1, :], GRU_out[:, :-1, :]), dim=1)
-		# next_elements = torch.cat((GRU_out[:, 1:, :], GRU_out[:, -1:, :]), dim=1)
-		# concat_previous_next = torch.cat((prev_elements, GRU_out, next_elements), dim=-1)
 
 
 		#################### Linear Attention
@@ -221,8 +170,6 @@ class Model_new(nn.Module):
 
 		case_logits = self.decoder_case(self.dropout1(concat_adjacent_case)) # [batch_size, max_label_lens_in_this_batch, 6]
 		punct_logits = self.decoder_punct(self.dropout2(concat_adjacent_punct))
-		# case_logits = self.decoder_case(self.dropout1(concat_previous_next)) # [batch_size, max_label_lens_in_this_batch, 6]
-		# punct_logits = self.decoder_punct(self.dropout2(concat_previous_next))
 
 		if labels is not None:
 			labels = labels[indx]

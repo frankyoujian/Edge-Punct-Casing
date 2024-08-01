@@ -193,24 +193,7 @@ def decode_sentences(
 
         # print(f"Decode sentence[{i}]:{output}")
         print(f"{output}")
-
-### This func move all 1s to the left of sequence 
-### After move, for 1s subsequence, replace the first element 1 and the last element 1 with value 2
-def handle_bos_eos(valid_ids):
-
-    sorted_sequences, _ = valid_ids.sort(dim=1, descending=True)
-
-    # Now find the first and last 1 in each sorted sequence and replace with 2
-    for sequence in sorted_sequences:
-        # Find indices where the value is 1
-        one_indices = (sequence == 1).nonzero(as_tuple=False).squeeze()
-        if one_indices.numel() > 0:
-            # Replace first and last 1 with 2
-            sequence[one_indices[0]] = 2
-            sequence[one_indices[-1]] = 2
-
-    # print(sorted_sequences) 
-    return sorted_sequences  
+ 
 
 @torch.no_grad()
 def main():
@@ -230,7 +213,6 @@ def main():
         device = torch.device("cuda", rank)
     logging.info(f"Device: {device}")
 
-    # add <SOS>, <EOS>, <PAD> token?
     sp = spm.SentencePieceProcessor()
     sp.load(args.bpe_model)
 
@@ -259,45 +241,10 @@ def main():
 
     token_ids, valid_ids, label_lens, label_masks = encode_sentences(params.text_file, sp, device)
 
-    print(f"token_ids shape:{token_ids.shape}")
-    print(f"-----------> token_ids:{token_ids}")
-    print(f"-----------> valid_ids:{valid_ids}")
-    print(f"-----------> label_lens:{label_lens}")
-
     active_case_logits, active_punct_logits, _ = model(token_ids, valid_ids=valid_ids, label_lens=label_lens)  
-    # case_logits, punct_logits = model(token_ids, valid_ids=valid_ids, label_lens=label_lens, label_masks=label_masks)  
-    # # print(f"case_logits shape:{case_logits.shape}, punct_logits shape:{punct_logits.shape}")
 
-    # label_ids = None
-    # label_lens, token_ids, label_ids, label_masks, valid_ids = sort_batch(label_lens, token_ids, label_ids, label_masks, valid_ids)
-    # label_masks = label_masks[:, :case_logits.shape[1]]
-    # active_ones = label_masks.reshape(-1) == 1
-
-    # active_case_logits = case_logits.view(-1, params.out_size_case)[active_ones]
-    # active_punct_logits = punct_logits.view(-1, params.out_size_punct)[active_ones]
-
-    # # tensor0 = token_ids[0]
-    # # decoded_text = sp.decode(tensor0.tolist())
-    # # print(f"sp decode:{decoded_text}")
-    # # print(f"case_logits[0]:{case_logits[0]}, case_logits[1]:{case_logits[1]}, case_logits[2]:{case_logits[2]}, case_logits[3]:{case_logits[3]}, case_logits[4]:{case_logits[4]}")
     case_pred = torch.argmax(F.log_softmax(active_case_logits, dim=1), dim=1)
     punct_pred = torch.argmax(F.log_softmax(active_punct_logits, dim=1), dim=1)
-    # # print(f"after argmax:case_logits[0]:{case_logits[0]}, case_logits[1]:{case_logits[1]}, case_logits[2]:{case_logits[2]}, case_logits[3]:{case_logits[3]}, case_logits[4]:{case_logits[4]}")
-    
-    # # for i,x in enumerate(case_logits):
-    # #     if not torch.equal(x, torch.tensor(1, device='cuda:3')):
-    # #         print(f"case, index[{i}]:{x}")
-    # # for i,x in enumerate(punct_logits):
-    # #     if not torch.equal(x, torch.tensor(0, device='cuda:3')):
-    # #         print(f"punct, index[{i}]:{x}")
-
-    # handled_valid_ids = handle_bos_eos(valid_ids)
-    # handled_valid_ids = handled_valid_ids[:, :case_logits.shape[1]]
-    # flatten_valid_ids = handled_valid_ids.reshape(-1)
-    # flatten_valid_ids = flatten_valid_ids[flatten_valid_ids != 0]
-    # text_token_ones = flatten_valid_ids == 1
-    # case_pred = case_pred[text_token_ones]
-    # punct_pred = punct_pred[text_token_ones]
 
     logging.info(
             f"Result ==> "

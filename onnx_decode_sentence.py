@@ -18,7 +18,7 @@ import torch.nn.functional as F
 from train import get_model, get_params
 from utils import (AttributeDict, setup_logger)
 from tqdm import tqdm
-from decode import handle_bos_eos, get_metrics, print_metrics, case_id, punct_id
+from decode import get_metrics, print_metrics, case_id, punct_id
 from decode_sentence import encode_sentences, decode_sentences
 from onnx_decode import OnnxModel
 import onnx
@@ -75,40 +75,14 @@ def main():
     #     device = torch.device("cuda", rank)
     logging.info(f"Device: {device}")
 
-    # add <SOS>, <EOS>, <PAD> token?
     sp = spm.SentencePieceProcessor()
     sp.load(args.bpe_model)
 
-    # params.vocab_size = sp.get_piece_size()
-
     logging.info(params)
-
-    # onnx_model = onnx.load(f"{args.exp_dir}/model.onnx")
-
-    # print(f"Onnx Model:\n\n{onnx.helper.printable_graph(onnx_model.graph)}")
-
-    # intermediate_layer_names = [
-    #                             "/ScatterND_output_0",
-    #                             "/ScatterND_2_output_0"
-    #                             ]
-    # # Add intermediate layer outputs
-    # intermediate_layer_value_info = [helper.ValueInfoProto() for name in intermediate_layer_names]
-    # for value_info, name in zip(intermediate_layer_value_info, intermediate_layer_names):
-    #     value_info.name = name
-    # onnx_model.graph.output.extend(intermediate_layer_value_info)
-
-    # # Save the modified model
-    # onnx.save(onnx_model, f"{args.exp_dir}/model_modified.onnx")
-
 
     model = OnnxModel(model_filename = args.model_filename)
 
     token_ids, valid_ids, label_lens, label_masks = encode_sentences(params.text_file, sp, device)
-
-    print(f"token_ids shape:{token_ids.shape}")
-    print(f"-----------> token_ids:{token_ids}")
-    print(f"-----------> valid_ids:{valid_ids}")
-    print(f"-----------> label_lens:{label_lens}")
 
     active_case_logits, active_punct_logits, _ = model.run_model(token_ids, valid_ids, label_lens)
 

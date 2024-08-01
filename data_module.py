@@ -66,70 +66,6 @@ class TextDataset(Dataset):
 
 		assert(len(self.text_lines) == len(self.label_lines[0]) and len(self.text_lines) == len(self.label_lines[1]))
 
-	def convert_examples_to_features(self, max_seq_length, tokenizer):
-
-		self.readLines()
-
-		# all examples:
-		self.features = []
-		self.max_seq_length = max_seq_length
-
-		# one example:
-		tokens = []
-		labels = [[], []]
-		valid = []
-		token_masks = []
-		label_masks = []
-		label_len = 0
-
-		print("Converting examples to features...")
-		for il, line in enumerate(tqdm(self.text_lines)):
-			words = line.split()
-			for iw, word in enumerate(words):
-				word_tokens = tokenizer.encode(word, out_type=int)
-
-				if len(tokens) + len(word_tokens) > max_seq_length:
-					token_masks = [1] * len(tokens)
-					label_masks = [1] * len(labels[0])
-					label_len = len(labels[0])
-
-					while len(tokens) < max_seq_length:
-						tokens.append(0)
-						token_masks.append(0)
-						valid.append(0)
-					while len(labels[0]) < max_seq_length:
-						labels[0].append(0)
-						labels[1].append(0)
-						label_masks.append(0)
-					assert len(tokens) == max_seq_length
-					assert len(token_masks) == max_seq_length
-					assert len(valid) == max_seq_length
-					assert len(labels[0]) == max_seq_length
-					assert len(labels[1]) == max_seq_length
-					assert len(label_masks) == max_seq_length
-
-					self.features.append( InputFeatures(token_ids = tokens,
-												   label_ids = labels,
-												   valid_ids = valid,
-												   token_masks = token_masks,
-												   label_masks = label_masks,
-												   label_len = label_len) )
-					tokens = []
-					labels = [[], []]
-					valid = []
-					token_masks = []
-					label_masks = []
-					label_len = 0
-
-				tokens.extend(word_tokens)
-				for m in range(len(word_tokens)):
-					if m == 0:
-						labels[0].append(self.label_lines[0][il][iw])
-						labels[1].append(self.label_lines[1][il][iw])
-						valid.append(1)
-					else:
-						valid.append(0)
-
 	def getTokensNum(self, words, tokenizer):
 		num = 0
 		for word in words:
@@ -340,14 +276,6 @@ class DataModule(object):
 		self.test_features_file = f"{self.data_dir}/test_features.txt"
 
 	def train_dataloader(self) -> DataLoader:
-	# 	print("Converting train examples to features...")
-	# 	train_features = self.train_processor.convert_examples_to_features(self.args.max_seq_length, self.sp)
-	# 	token_ids = [f.token_ids for f in train_features]
-	# 	token_ids = torch.tensor(token_ids, dtype=torch.long)
-	# 	label_ids = torch.tensor([f.label_ids for f in train_features], dtype=torch.long)
-	# 	valid_ids = torch.tensor([f.valid_ids for f in train_features], dtype=torch.long)
-	# 	train_data = TensorDataset(token_ids, label_ids, valid_ids)
-
 		if not os.path.isfile(self.train_features_file):
 			print("Extracting train features:")
 			self.train_dataset.convert_examples_to_features_bos_eos(self.args.max_seq_length, self.sp)
@@ -375,17 +303,6 @@ class DataModule(object):
 		return train_dataloader
 
 	def valid_dataloader(self) -> DataLoader:
-		# print(f"valid features len:{len(valid_features)}")
-		# token_ids = [f.token_ids for f in valid_features]
-		# print(f"token_ids len:{len(token_ids)}")
-		# for i, t in enumerate(token_ids):
-		# 	print(f"{i}: {len(t)}")
-		# token_ids = torch.tensor(token_ids, dtype=torch.long)
-		# # for f in valid_features:
-		# # 	print(f"{f.label_ids.shape}")
-		# label_ids = torch.tensor([f.label_ids for f in valid_features], dtype=torch.long)
-		# valid_ids = torch.tensor([f.valid_ids for f in valid_features], dtype=torch.long)
-		# valid_data = TensorDataset(token_ids, label_ids, valid_ids)
 		if not os.path.isfile(self.valid_features_file):
 			print("Extracting valid features:")
 			self.valid_dataset.convert_examples_to_features_bos_eos(self.args.max_seq_length, self.sp)
@@ -432,26 +349,6 @@ class DataModule(object):
 							)
 
 		return test_dataloader, self.test_text
-
-# def sort_batch(token_ids, label_ids, valid_ids, label_lens, label_masks):
-# 	print(f"before, label_lens:{label_lens}")
-# 	label_lens, indx = label_lens.sort(dim=0, descending=True)
-# 	print(f"after, label_lens:{label_lens}")
-# 	print(f"indx:{indx}")
-# 	# print(f"token_ids:{token_ids}")
-# 	# indx = indx.to(dtype=torch.long, device="cuda:0")
-# 	# indx = [i.tolist() for i in indx]
-# 	print(f"token_ids len:{len(token_ids)}")
-# 	print(token_ids)
-# 	print(f"before, token_ids[0] len:{len(token_ids[0])}, token_ids[1] len:{len(token_ids[1])}")
-# 	# token_ids = token_ids[indx]
-# 	token_ids = sorted(token_ids, key=lambda x: x.size()[0], reverse=True)
-# 	print(f"after, token_ids[0] len:{len(token_ids[0])}, token_ids[1] len:{len(token_ids[1])}")
-# 	label_ids = label_ids[indx]
-# 	valid_ids = valid_ids[indx]
-# 	label_masks = label_masks[indx]
-# 	# transpose (batch_size, seq_length, _) to (seq_length, batch_size, _) ?
-# 	return token_ids, label_ids, valid_ids, label_lens, label_masks
 
 def sort_batch(label_lens, valid_output, labels, label_masks, valid_ids = None):
 	# print(f"before, label_lens:{label_lens}")

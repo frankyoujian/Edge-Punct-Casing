@@ -70,9 +70,7 @@ def export_model(
     token_ids = torch.ones(1, max_seq_length, dtype=torch.int32)
     valid_ids = torch.ones(1, max_seq_length, dtype=torch.int32)
     label_lens = torch.tensor([200], dtype=torch.int32)
-    # label_masks = torch.ones(1, max_seq_length, dtype=torch.int64)
 
-    # torch.jit.script
     model = torch.jit.trace(model, (token_ids, valid_ids, label_lens))
 
     torch.onnx.export(
@@ -149,14 +147,6 @@ def main():
 
     opset_version = 13
 
-    # quantized_model = torch.ao.quantization.quantize_dynamic(
-    #     model, 
-    #     {torch.nn.GRU, torch.nn.Linear}, # Specify which layer types to quantize
-    #     dtype=torch.qint8                   # Specify the quantized dtype to use
-    # )
-    # torch_quantize_filename = params.exp_dir / f"model_torch.int8.onnx"
-    # onnx.save(quantized_model, torch_quantize_filename)
-
     logging.info("Exporting model")
     model_filename = params.exp_dir / f"model.onnx"
     export_model(
@@ -178,14 +168,9 @@ def main():
     quantize_dynamic(
         model_input=model_sim_filename,
         model_output=model_filename_int8,
-        # op_types_to_quantize=["MatMul"],
         weight_type=QuantType.QUInt8,
     )
     logging.info(f"Exported quantized model to {model_filename_int8}")
-
-    # onnx_int8_model = onnx.load(model_filename_int8)
-    # print(f"Onnx int8 Model:\n\n{onnx.helper.printable_graph(onnx_int8_model.graph)}")
-
 
     # model_fp16_filename = params.exp_dir / f"model_fp16.onnx"
     # model = onnx.load(model_sim_filename)

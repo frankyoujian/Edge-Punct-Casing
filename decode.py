@@ -80,26 +80,7 @@ def get_parser():
                         # required=True,
                         help="The batch pt used for decoding")
 
-    return parser
-
-
-### This func move all 1s to the left of sequence 
-### After move, for 1s subsequence, replace the first element 1 and the last element 1 with value 2
-def handle_bos_eos(valid_ids):
-
-    sorted_sequences, _ = valid_ids.sort(dim=1, descending=True)
-
-    # Now find the first and last 1 in each sorted sequence and replace with 2
-    for sequence in sorted_sequences:
-        # Find indices where the value is 1
-        one_indices = (sequence == 1).nonzero(as_tuple=False).squeeze()
-        if one_indices.numel() > 0:
-            # Replace first and last 1 with 2
-            sequence[one_indices[0]] = 2
-            sequence[one_indices[-1]] = 2
-
-    # print(sorted_sequences) 
-    return sorted_sequences  
+    return parser 
 
 def inc(d, k):
     if k in d:
@@ -182,7 +163,6 @@ def main():
         device = torch.device("cuda", rank)
     logging.info(f"Device: {device}")
 
-    # add <SOS>, <EOS>, <PAD> token?
     sp = spm.SentencePieceProcessor()
     sp.load(args.bpe_model)
 
@@ -210,75 +190,33 @@ def main():
     model.eval()
 
     data_module = DataModule(args, sp)
-    # valid_dl = data_module.valid_dataloader()
-    # valid_dl = data_module.train_dataloader()
-    # logging.info(f"len(valid_dl):{len(valid_dl)}")
     decode_dl, test_file = data_module.test_dataloader()
     logging.info(f"test_file:{test_file}, len(decode_dl):{len(decode_dl)}")
-    # decode_dl = data_module.valid_dataloader()
-    # logging.info(f"len(decode_dl):{len(decode_dl)}")
-    
 
     for batch_idx, batch in enumerate(tqdm(decode_dl)):
         batch = tuple(t.to(device) for t in batch)
         token_ids, label_ids, valid_ids, label_lens, label_masks = batch
 
-        # print(f"----> label_lens:{label_lens}")
-        # case_logits, punct_logits = model(token_ids, valid_ids=valid_ids, label_lens=label_lens)  
         active_case_logits, active_punct_logits, mask = model(token_ids, valid_ids=valid_ids, label_lens=label_lens) 
-        # print(f"<---- label_lens:{label_lens}")
 
         label_lens, indx = torch.sort(label_lens, dim=0, descending=True, stable=True)
         label_ids = label_ids[indx]
-        # valid_ids = valid_ids[indx]
-
-        # label_masks = label_masks[:, :case_logits.shape[1]]
-        # active_ones = label_masks.reshape(-1) == 1
-
-        # active_case_logits = case_logits.view(-1, params.out_size_case)[active_ones]
-        # active_punct_logits = punct_logits.view(-1, params.out_size_punct)[active_ones]
 
         case_pred = torch.argmax(F.log_softmax(active_case_logits, dim=1), dim=1)
         punct_pred = torch.argmax(F.log_softmax(active_punct_logits, dim=1), dim=1)
 
-        # label_ids = label_ids[:, :, :case_logits.shape[1]]
         label_ids = label_ids[:, :, :mask.shape[1]]
-        # active_case_labels = label_ids[:, 0, :].reshape(-1)[active_ones]
-        # active_punct_labels = label_ids[:, 1, :].reshape(-1)[active_ones]
         active_case_labels = label_ids[:, 0, :][mask]
         active_punct_labels = label_ids[:, 1, :][mask]
-
-        # handled_valid_ids = handle_bos_eos(valid_ids)
-        # handled_valid_ids = handled_valid_ids[:, :case_logits.shape[1]]
-        # flatten_valid_ids = handled_valid_ids.reshape(-1)
-        # flatten_valid_ids = flatten_valid_ids[flatten_valid_ids != 0]
-        # text_token_ones = flatten_valid_ids == 1
-        # case_pred = case_pred[text_token_ones]
-        # punct_pred = punct_pred[text_token_ones]
-        # active_case_labels = active_case_labels[text_token_ones]
-        # active_punct_labels = active_punct_labels[text_token_ones]
-
-        # case_res = torch.eq(case_pred, active_case_labels)
-        # punct_res = torch.eq(punct_pred, active_punct_labels)
-        
-        # torch.set_printoptions(profile="full")
-        # print(f"punct_pred:{punct_pred}")
-        # print(f"punct_labels:{active_punct_labels}")
 
         precision_case, recall_case, f_scores_case, overall_case = get_metrics(case_pred.detach().cpu().numpy(), active_case_labels.detach().cpu().numpy())
         precision_punct, recall_punct, f_scores_punct, overall_punct = get_metrics(punct_pred.detach().cpu().numpy(), active_punct_labels.detach().cpu().numpy())
 
-        # print(f"----------> precision_punct:{precision_punct}")
         logging.info("\nCase metrics:\n----------------------------------------------------------------------------------------")
         print_metrics(logging, precision_case, recall_case, f_scores_case, overall_case, case_id)
         logging.info("\nPunct metrics:\n=======================================================================================")
         print_metrics(logging, precision_punct, recall_punct, f_scores_punct, overall_punct, punct_id)
 
-
-    # for name, param in model.named_parameters():
-    #     print(f"Layer: {name}")
-    #     print(f"Weight shape: {param.size()}")
-    #     print(f"Weight values:\n{param.data}")
 
 if __name__ == "__main__":
     main()

@@ -128,37 +128,15 @@ def get_parser():
                         type=int,
                         # required=True,
                         help="Batch size for training")
-    # parser.add_argument("--learning_rate",
-    #                     default=0.001, # 5e-5
-    #                     type=float,
-    #                     # required=True,
-    #                     help="The initial learning rate for Adam")
     parser.add_argument("--base-lr", 
     					type=float, 
     					default=0.002, 
     					help="The base learning rate.")
-
-    parser.add_argument("--lr-batches",
-						type=float,
-						default=7500, #7500
-						help="""Number of steps that affects how rapidly the learning rate
-						decreases. We suggest not to change this.""",)
-
-    parser.add_argument("--lr-epochs",
-						type=float,
-						default=3.5,
-						help="""Number of epochs that affects how rapidly the learning rate decreases.
-						""",)
     parser.add_argument("--epochs",
                         default=10,
                         type=int,
                         # required=True,
                         help="Total number of training epochs to perform")
-    parser.add_argument("--warmup_proportion",
-                        default=0.1,
-                        type=float,
-                        # required=True,
-                        help="Proportion of training to perform linear learning rate warmup, e.g. 0.1=10\% of training")
     parser.add_argument("--weight_decay",
                         default=2.5e-5,
                         type=float,
@@ -339,7 +317,6 @@ def compute_validation_loss(
 		for batch_idx, batch in enumerate(valid_dl):
 			loss = compute_loss(model, batch, device, params)
 			tot_loss = tot_loss + loss.detach().cpu().item()
-			# tot_loss = tot_loss + params.punct_loss.detach().cpu().item()
 
 	if tot_loss < params.best_valid_loss:
 		params.best_valid_loss = tot_loss
@@ -364,12 +341,10 @@ def run(rank, world_size, args):
 	setup_logger(f"{params.exp_dir}/log-train")
 
 	device = torch.device("cpu")
-	# rank = 3 # hardcode 0 to use single GPU firstly
 	if torch.cuda.is_available():
 		device = torch.device("cuda", rank)
 	logging.info(f"Device: {device}")
 
-	# add <SOS>, <EOS>, <PAD> token?
 	sp = spm.SentencePieceProcessor()
 	sp.load(args.bpe_model)
 
@@ -383,10 +358,6 @@ def run(rank, world_size, args):
 	num_param = sum([p.numel() for p in model.parameters()])
 	logging.info(f"Number of model parameters: {num_param}")
 
-    # assert params.start_epoch > 0, params.start_epoch
-    # checkpoints = load_checkpoint_if_available(
-    #     params=params, model=model
-    # )
 	if params.do_finetune:
 		checkpoints = load_model_params(
 			ckpt=params.finetune_ckpt, model=model
@@ -394,11 +365,6 @@ def run(rank, world_size, args):
 		params.log_interval = 5
 		params.valid_interval = 15
 		params.save_every_n = 25
-
-	#### for train finetune data only
-	# params.log_interval = 10
-	# params.valid_interval = 60
-	# params.save_every_n = 100
 
 	if args.tensorboard and rank == 0:
 		tb_writer = SummaryWriter(log_dir=f"{params.exp_dir}/tensorboard")
@@ -419,8 +385,6 @@ def run(rank, world_size, args):
 	# for param in model.parameters():
 	# 	print(type(param.data), param.size())
 	# add warm-ups and scheduler
-	# scheduler = Eden2(optimizer, params.lr_batches)
-	# scheduler = Eden(optimizer, params.lr_batches, params.lr_epochs)
 	# TODO: try ReduceLROnPlateau/CosinAnnealingLR
 	# scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=params.gamma)
 	scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -434,20 +398,10 @@ def run(rank, world_size, args):
 
 	data_module = DataModule(args, sp)
 	train_dl = data_module.train_dataloader()
-	# train_dl = data_module.valid_dataloader()
 	valid_dl = data_module.valid_dataloader()
-	# valid_dl, test_file = data_module.test_dataloader()
 
-	# print("debug dataloader")
 	logging.info(f"len(train_dl):{len(train_dl)}")
 	logging.info(f"len(valid_dl):{len(valid_dl)}")
-
-	# it = iter(train_dl)
-
-	# token_ids, label_ids, valid_ids, label_lens, label_masks = next(it)
-	# print(f"type(token_ids):{type(token_ids)}")
-	# print(f"token_ids:{token_ids}")
-	
 
 	logging.info("Training started")
 
@@ -467,23 +421,10 @@ def run(rank, world_size, args):
 
 		for batch_idx, batch in enumerate(train_dl):
 			params.batch_idx_train += 1
-			# batch = tuple(t.to(device) for t in batch)
-			# token_ids, label_ids, valid_ids, label_lens, label_masks = batch
-			# # print("token_ids:")
-			# # print(f"{token_ids}")
-
-			# case_loss, punct_loss = model(token_ids, valid_ids=valid_ids, label_lens=label_lens, label_masks=label_masks, labels=label_ids)
-			# # if params.batch_idx_train > 2:
-			# # 	loss = 0.4*case_loss + 0.6*punct_loss + 0.4*penalty
-			# # else:
-			# # 	loss = 0.4*case_loss + 0.6*punct_loss
-			# loss = 0.4*case_loss + 0.6*punct_loss
-			# # logging.info(f"case_loss:{case_loss}, punct_loss:{punct_loss},penalty:{penalty}")
 
 			loss = compute_loss(model, batch, device, params)
 
 			loss.backward()
-			# scheduler.step_batch(params.batch_idx_train)
 			optimizer.step()
 			optimizer.zero_grad()
 			tot_loss = tot_loss + loss.detach().cpu().item()
@@ -499,9 +440,6 @@ def run(rank, world_size, args):
 					f"loss[{loss.detach().cpu().item()}], "
 					f"case_loss[{params.case_loss}], "
 					f"punct_loss[{params.punct_loss}], "
-					# f"penalty[{penalty}], "
-					# f"alpha[{alpha.detach().cpu().item()}], "
-					# f"beta[{beta.detach().cpu().item()}]"
 				)
 
 				if tb_writer is not None:
